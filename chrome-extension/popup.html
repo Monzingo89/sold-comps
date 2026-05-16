@@ -39,6 +39,16 @@
         padding: 8px;
         cursor: pointer;
       }
+      .button-row {
+        display: flex;
+        gap: 8px;
+      }
+      .button-row button {
+        width: 50%;
+      }
+      #resetBtn {
+        background: #475569;
+      }
       .hint {
         margin-top: 10px;
         font-size: 11px;
@@ -57,7 +67,10 @@
     <h1>eBay Comps API</h1>
     <label for="apiBase">Backend base URL</label>
     <input id="apiBase" type="url" placeholder="http://localhost:3000" />
-    <button id="saveBtn">Save</button>
+    <div class="button-row">
+      <button id="saveBtn">Save</button>
+      <button id="resetBtn" type="button">Reset position</button>
+    </div>
     <div id="status"></div>
     <div class="hint">
       Example: <code>https://your-render-app.onrender.com</code>

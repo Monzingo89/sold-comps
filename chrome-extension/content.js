@@ -1,4 +1,7 @@
 const OVERLAY_ID = "ebay-comps-overlay";
+const REFRESH_DEBOUNCE_MS = 450;
+const OVERLAY_POSITION_KEY = "compsOverlayPosition";
+const OVERLAY_MARGIN = 8;
 
 const SITE_SELECTORS = {
   "facebook.com": {
@@ -19,25 +22,146 @@ const SITE_SELECTORS = {
   }
 };
 
-(async function initCompsOverlay() {
-  const title = extractListingTitle();
+let refreshTimerId = null;
+let lastContextKey = "";
+let lastKnownUrl = window.location.href;
+let requestSequence = 0;
+let hasRenderedOverlayBefore = false;
+let overlayPositionRestored = false;
+let activeDrag = null;
 
-  if (!title) {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== "RESET_OVERLAY_POSITION") {
+    return false;
+  }
+
+  resetOverlayPosition();
+  sendResponse({ ok: true });
+  return false;
+});
+
+initCompsOverlay();
+
+function initCompsOverlay() {
+  startAutoRefreshWatchers();
+  runOverlaySearch({ force: true });
+}
+
+function startAutoRefreshWatchers() {
+  wrapHistoryMethod("pushState");
+  wrapHistoryMethod("replaceState");
+
+  window.addEventListener("popstate", () => {
+    onRoutePotentiallyChanged();
+    scheduleOverlayRefresh();
+  });
+
+  window.addEventListener("hashchange", () => {
+    onRoutePotentiallyChanged();
+    scheduleOverlayRefresh();
+  });
+
+  const observer = new MutationObserver(() => {
+    onRoutePotentiallyChanged();
+    scheduleOverlayRefresh();
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+}
+
+function wrapHistoryMethod(methodName) {
+  const original = window.history?.[methodName];
+
+  if (typeof original !== "function") {
     return;
   }
 
-  const askingPrice = extractAskingPrice();
-  renderLoading(title, askingPrice);
+  window.history[methodName] = function patchedHistoryMethod(...args) {
+    const result = original.apply(this, args);
+    onRoutePotentiallyChanged();
+    scheduleOverlayRefresh();
+    return result;
+  };
+}
 
-  const result = await searchEbay(title);
+function onRoutePotentiallyChanged() {
+  if (window.location.href !== lastKnownUrl) {
+    lastKnownUrl = window.location.href;
+  }
+}
 
-  if (!result || result.error) {
-    renderError(result?.error || "No response from eBay API.", title, askingPrice);
-    return;
+function scheduleOverlayRefresh() {
+  if (refreshTimerId) {
+    clearTimeout(refreshTimerId);
   }
 
-  renderComps(result, title, askingPrice);
-})();
+  refreshTimerId = setTimeout(() => {
+    refreshTimerId = null;
+    runOverlaySearch();
+  }, REFRESH_DEBOUNCE_MS);
+}
+
+function getContextKey(title) {
+  return `${window.location.href}::${String(title || "").trim()}`;
+}
+
+async function runOverlaySearch({ force = false } = {}) {
+  try {
+    const title = extractListingTitle();
+
+    if (!title) {
+      const overlay = document.getElementById(OVERLAY_ID);
+      if (overlay) {
+        overlay.remove();
+      }
+      lastContextKey = "";
+      hasRenderedOverlayBefore = false;
+      return;
+    }
+
+    const contextKey = getContextKey(title);
+
+    if (!force && contextKey === lastContextKey) {
+      return;
+    }
+
+    lastContextKey = contextKey;
+
+    const askingPrice = extractAskingPrice();
+    const isRefreshing = hasRenderedOverlayBefore;
+    renderLoading(title, askingPrice, isRefreshing);
+    hasRenderedOverlayBefore = true;
+
+    const runId = ++requestSequence;
+
+    const result = await searchEbay(title);
+
+    if (runId !== requestSequence) {
+      return;
+    }
+
+    if (!result || result.error) {
+      renderError(result?.error || "No response from eBay API.", title, askingPrice);
+      return;
+    }
+
+    renderComps(result, title, askingPrice);
+  } catch (error) {
+    const overlay = ensureOverlay();
+    overlay.innerHTML = `
+      <div class="ebay-comps-card">
+        <div class="ebay-comps-header-row">
+          <div class="ebay-comps-header">eBay Sold Comps</div>
+        </div>
+        <div class="ebay-comps-error">${escapeHtml(error?.message || "Unexpected extension error.")}</div>
+      </div>
+    `;
+  }
+}
 
 function getSelectorSet() {
   const host = window.location.hostname;
@@ -94,14 +218,39 @@ function parsePrice(text) {
 
 function searchEbay(title) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: "SEARCH_EBAY", title }, (response) => {
-      if (chrome.runtime.lastError) {
-        resolve({ error: chrome.runtime.lastError.message });
+    let settled = false;
+
+    const settle = (payload) => {
+      if (settled) {
         return;
       }
 
-      resolve(response);
-    });
+      settled = true;
+      resolve(payload);
+    };
+
+    const timeoutId = setTimeout(() => {
+      settle({
+        error:
+          "Timed out waiting for extension background response. Reload the extension and try again."
+      });
+    }, 16000);
+
+    try {
+      chrome.runtime.sendMessage({ type: "SEARCH_EBAY", title }, (response) => {
+        clearTimeout(timeoutId);
+
+        if (chrome.runtime.lastError) {
+          settle({ error: chrome.runtime.lastError.message });
+          return;
+        }
+
+        settle(response || { error: "No response from extension background." });
+      });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      settle({ error: error?.message || "Failed to send message to extension background." });
+    }
   });
 }
 
@@ -115,7 +264,168 @@ function ensureOverlay() {
     document.body.appendChild(overlay);
   }
 
+  initializeOverlayInteractions(overlay);
+  restoreOverlayPosition(overlay);
+
   return overlay;
+}
+
+function initializeOverlayInteractions(overlay) {
+  if (overlay.dataset.dragInitialized === "1") {
+    return;
+  }
+
+  overlay.dataset.dragInitialized = "1";
+
+  overlay.addEventListener("pointerdown", (event) => {
+    const headerRow = event.target?.closest?.(".ebay-comps-header-row");
+
+    if (!headerRow) {
+      return;
+    }
+
+    if (typeof event.button === "number" && event.button !== 0) {
+      return;
+    }
+
+    const rect = overlay.getBoundingClientRect();
+
+    activeDrag = {
+      overlay,
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+
+    overlay.classList.add("ebay-comps-dragging");
+    event.preventDefault();
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) {
+      return;
+    }
+
+    const maxLeft = Math.max(OVERLAY_MARGIN, window.innerWidth - activeDrag.width - OVERLAY_MARGIN);
+    const maxTop = Math.max(OVERLAY_MARGIN, window.innerHeight - activeDrag.height - OVERLAY_MARGIN);
+
+    const left = clamp(event.clientX - activeDrag.offsetX, OVERLAY_MARGIN, maxLeft);
+    const top = clamp(event.clientY - activeDrag.offsetY, OVERLAY_MARGIN, maxTop);
+
+    applyOverlayPosition(activeDrag.overlay, left, top);
+  });
+
+  const endDrag = (event) => {
+    if (!activeDrag) {
+      return;
+    }
+
+    if (event && event.pointerId !== undefined && event.pointerId !== activeDrag.pointerId) {
+      return;
+    }
+
+    const overlayRef = activeDrag.overlay;
+    activeDrag = null;
+    overlayRef.classList.remove("ebay-comps-dragging");
+    persistOverlayPosition(overlayRef);
+  };
+
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+
+  window.addEventListener("resize", () => {
+    clampOverlayToViewport(overlay, false);
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function applyOverlayPosition(overlay, left, top) {
+  overlay.style.left = `${Math.round(left)}px`;
+  overlay.style.top = `${Math.round(top)}px`;
+  overlay.style.right = "auto";
+  overlay.style.bottom = "auto";
+}
+
+function clampOverlayToViewport(overlay, saveAfterClamp) {
+  const rect = overlay.getBoundingClientRect();
+
+  const maxLeft = Math.max(OVERLAY_MARGIN, window.innerWidth - rect.width - OVERLAY_MARGIN);
+  const maxTop = Math.max(OVERLAY_MARGIN, window.innerHeight - rect.height - OVERLAY_MARGIN);
+
+  const left = clamp(rect.left, OVERLAY_MARGIN, maxLeft);
+  const top = clamp(rect.top, OVERLAY_MARGIN, maxTop);
+
+  if (Math.abs(left - rect.left) > 0.5 || Math.abs(top - rect.top) > 0.5) {
+    applyOverlayPosition(overlay, left, top);
+
+    if (saveAfterClamp) {
+      persistOverlayPosition(overlay);
+    }
+  }
+}
+
+function restoreOverlayPosition(overlay) {
+  if (overlayPositionRestored) {
+    return;
+  }
+
+  overlayPositionRestored = true;
+
+  try {
+    chrome.storage.local.get(OVERLAY_POSITION_KEY, (stored) => {
+      if (chrome.runtime.lastError) {
+        return;
+      }
+
+      const position = stored?.[OVERLAY_POSITION_KEY];
+      const hasValidLeft = Number.isFinite(position?.left);
+      const hasValidTop = Number.isFinite(position?.top);
+
+      if (!hasValidLeft || !hasValidTop) {
+        return;
+      }
+
+      applyOverlayPosition(overlay, position.left, position.top);
+      clampOverlayToViewport(overlay, false);
+    });
+  } catch (_error) {
+    // Ignore storage read failures; overlay remains at default position.
+  }
+}
+
+function persistOverlayPosition(overlay) {
+  const rect = overlay.getBoundingClientRect();
+
+  try {
+    chrome.storage.local.set({
+      [OVERLAY_POSITION_KEY]: {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top)
+      }
+    });
+  } catch (_error) {
+    // Ignore storage write failures.
+  }
+}
+
+function resetOverlayPosition() {
+  const overlay = document.getElementById(OVERLAY_ID);
+
+  if (!overlay) {
+    return;
+  }
+
+  activeDrag = null;
+  overlay.classList.remove("ebay-comps-dragging");
+  overlay.style.left = "";
+  overlay.style.top = "";
+  overlay.style.right = "";
+  overlay.style.bottom = "";
 }
 
 function formatUsd(value) {
@@ -130,12 +440,18 @@ function formatUsd(value) {
   }).format(value);
 }
 
-function renderLoading(title, askingPrice) {
+function renderLoading(title, askingPrice, isRefreshing = false) {
   const overlay = ensureOverlay();
+  const badgeHtml = isRefreshing
+    ? '<span class="ebay-comps-refresh-badge">Refreshing…</span>'
+    : "";
 
   overlay.innerHTML = `
     <div class="ebay-comps-card">
-      <div class="ebay-comps-header">eBay Sold Comps</div>
+      <div class="ebay-comps-header-row">
+        <div class="ebay-comps-header">eBay Sold Comps</div>
+        ${badgeHtml}
+      </div>
       <div class="ebay-comps-subtle">Searching eBay for:</div>
       <div class="ebay-comps-query">${escapeHtml(title)}</div>
       <div class="ebay-comps-subtle">Asking price: <strong>${formatUsd(askingPrice)}</strong></div>
@@ -149,7 +465,9 @@ function renderError(message, title, askingPrice) {
 
   overlay.innerHTML = `
     <div class="ebay-comps-card">
-      <div class="ebay-comps-header">eBay Sold Comps</div>
+      <div class="ebay-comps-header-row">
+        <div class="ebay-comps-header">eBay Sold Comps</div>
+      </div>
       <div class="ebay-comps-query">${escapeHtml(title)}</div>
       <div class="ebay-comps-subtle">Asking price: <strong>${formatUsd(askingPrice)}</strong></div>
       <div class="ebay-comps-error">${escapeHtml(message)}</div>
@@ -175,7 +493,9 @@ function renderComps(result, title, askingPrice) {
 
   overlay.innerHTML = `
     <div class="ebay-comps-card">
-      <div class="ebay-comps-header">eBay Sold Comps</div>
+      <div class="ebay-comps-header-row">
+        <div class="ebay-comps-header">eBay Sold Comps</div>
+      </div>
       <div class="ebay-comps-query">${escapeHtml(title)}</div>
 
       <div class="ebay-comps-stat-grid">

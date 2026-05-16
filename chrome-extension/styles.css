@@ -19,8 +19,37 @@
 .ebay-comps-header {
   font-size: 14px;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: #93c5fd;
+}
+
+.ebay-comps-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ebay-comps-overlay.ebay-comps-dragging {
+  user-select: none;
+}
+
+.ebay-comps-overlay.ebay-comps-dragging .ebay-comps-header-row {
+  cursor: grabbing;
+}
+
+.ebay-comps-refresh-badge {
+  font-size: 10px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+  border: 1px solid rgba(147, 197, 253, 0.45);
+  white-space: nowrap;
 }
 
 .ebay-comps-query {
