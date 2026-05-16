@@ -7,6 +7,8 @@ const app = express();
 
 const port = Number(process.env.PORT || 3000);
 const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN || "*";
+const host = process.env.HOST || "0.0.0.0";
+const publicBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_BASE_URL || null;
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", corsAllowOrigin);
@@ -23,6 +25,15 @@ app.use((req, res, next) => {
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "sold-comps-api" });
+});
+
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "sold-comps-api",
+    message: "API is running. Use /api/ebay/comps?q=<search>",
+    endpoints: ["/health", "/api/ebay/comps?q=ps5", "/api/comps?q=ps5"]
+  });
 });
 
 async function handleCompsRoute(req, res) {
@@ -44,7 +55,14 @@ async function handleCompsRoute(req, res) {
 app.get("/api/ebay/comps", handleCompsRoute);
 app.get("/api/comps", handleCompsRoute);
 
-app.listen(port, () => {
-  console.log(`[sold-comps-api] Listening on http://localhost:${port}`);
-  console.log("[sold-comps-api] comps endpoint: /api/ebay/comps");
+app.listen(port, host, () => {
+  console.log(`[sold-comps-api] Listening on http://${host}:${port} (internal)`);
+
+  if (publicBaseUrl) {
+    const normalized = String(publicBaseUrl).replace(/\/+$/, "");
+    console.log(`[sold-comps-api] Public URL: ${normalized}`);
+    console.log(`[sold-comps-api] comps endpoint: ${normalized}/api/ebay/comps`);
+  } else {
+    console.log("[sold-comps-api] comps endpoint: /api/ebay/comps");
+  }
 });
