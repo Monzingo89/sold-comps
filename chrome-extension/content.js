@@ -2,6 +2,10 @@ const OVERLAY_ID = "ebay-comps-overlay";
 const REFRESH_DEBOUNCE_MS = 450;
 const OVERLAY_POSITION_KEY = "compsOverlayPosition";
 const OVERLAY_MARGIN = 8;
+const AMAZON_PRODUCT_PATH_REGEX = /\/(dp|gp\/product|gp\/aw\/d)\//i;
+const FACEBOOK_MARKETPLACE_ITEM_PATH_REGEX = /\/marketplace\/item\//i;
+const FACEBOOK_GENERIC_TITLE_REGEX =
+  /^(marketplace|facebook marketplace|top picks|today'?s picks|items for you|for you)$/i;
 
 const SITE_SELECTORS = {
   "facebook.com": {
@@ -111,7 +115,17 @@ function getContextKey(title) {
 
 async function runOverlaySearch({ force = false } = {}) {
   try {
-    const title = extractListingTitle();
+    let title;
+    let askingPrice;
+
+    if (isFacebookHost()) {
+      const context = getFacebookListingContext();
+      title = context.title;
+      askingPrice = context.price;
+    } else {
+      title = extractListingTitle();
+      askingPrice = extractAskingPrice();
+    }
 
     if (!title) {
       const overlay = document.getElementById(OVERLAY_ID);
@@ -131,7 +145,6 @@ async function runOverlaySearch({ force = false } = {}) {
 
     lastContextKey = contextKey;
 
-    const askingPrice = extractAskingPrice();
     const isRefreshing = hasRenderedOverlayBefore;
     renderLoading(title, askingPrice, isRefreshing);
     hasRenderedOverlayBefore = true;
@@ -170,7 +183,32 @@ function getSelectorSet() {
   return key ? SITE_SELECTORS[key] : { title: ["h1"], price: ["[class*='price']"] };
 }
 
+function isAmazonHost() {
+  return window.location.hostname.includes("amazon.com");
+}
+
+function isAmazonProductPage() {
+  return isAmazonHost() && AMAZON_PRODUCT_PATH_REGEX.test(window.location.pathname);
+}
+
+function isFacebookHost() {
+  return window.location.hostname.includes("facebook.com");
+}
+
+function isFacebookMarketplaceItemPage() {
+  return isFacebookHost() && FACEBOOK_MARKETPLACE_ITEM_PATH_REGEX.test(window.location.pathname);
+}
+
 function extractListingTitle() {
+  if (isAmazonHost()) {
+    if (!isAmazonProductPage()) {
+      return null;
+    }
+
+    const amazonTitle = extractAmazonTitle();
+    return amazonTitle;
+  }
+
   const selectors = getSelectorSet().title;
 
   for (const selector of selectors) {
@@ -185,7 +223,182 @@ function extractListingTitle() {
   return null;
 }
 
+function isUsableFacebookTitle(title) {
+  const normalized = String(title || "").replace(/\s+/g, " ").trim();
+
+  if (!normalized || normalized.length < 5) {
+    return false;
+  }
+
+  return !FACEBOOK_GENERIC_TITLE_REGEX.test(normalized);
+}
+
+function extractPriceFromText(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/ships?\s+for|delivery|estimated\s+arrival|watchers?/i.test(normalized)) {
+    return null;
+  }
+
+  const parsed = parsePrice(text || "");
+  return typeof parsed === "number" && parsed > 0 && parsed < 200000 ? parsed : null;
+}
+
+function isElementVisiblyRendered(element) {
+  if (!element) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") {
+    return false;
+  }
+
+  if (element.getAttribute("aria-hidden") === "true") {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function findFacebookPriceNearElement(titleElement) {
+  const titleHeader = titleElement.closest("h1") || titleElement;
+
+  // First, try immediate sibling blocks under the title header (where main price usually lives).
+  let sibling = titleHeader.nextElementSibling;
+  for (let i = 0; sibling && i < 3; i += 1) {
+    const parsed = extractPriceFromText(sibling.textContent || "");
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+    sibling = sibling.nextElementSibling;
+  }
+
+  // Then search nearby containers for explicit marketplace price markers.
+  const selectors = [
+    "[data-testid='marketplace_pdp_price']",
+    "div[aria-hidden='false'] span[dir='auto']",
+    "[aria-label*='$']"
+  ];
+
+  let container = titleElement.closest("div");
+  for (let depth = 0; container && depth < 4; depth += 1) {
+    for (const selector of selectors) {
+      const nodes = container.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (!isElementVisiblyRendered(node)) {
+          continue;
+        }
+
+        const parsed = extractPriceFromText(node.textContent || "");
+        if (typeof parsed === "number") {
+          return parsed;
+        }
+      }
+    }
+
+    container = container.parentElement;
+  }
+
+  return null;
+}
+
+function getFacebookListingContext() {
+  if (!isFacebookMarketplaceItemPage()) {
+    return { title: null, price: null };
+  }
+
+  const selectors = [
+    "[data-testid='marketplace_pdp_title']",
+    "h1[aria-hidden='false'] span[dir='auto']",
+    "div[role='main'] h1 span[dir='auto']",
+    "div[role='main'] h1",
+    "h1"
+  ];
+  const seen = new Set();
+  const candidates = [];
+
+  for (const selector of selectors) {
+    const nodes = document.querySelectorAll(selector);
+    for (const node of nodes) {
+      if (seen.has(node)) {
+        continue;
+      }
+      seen.add(node);
+      candidates.push(node);
+    }
+  }
+
+  let best = null;
+
+  for (const node of candidates) {
+    if (!isElementVisiblyRendered(node)) {
+      continue;
+    }
+
+    const title = String(node.textContent || "").replace(/\s+/g, " ").trim();
+
+    if (!isUsableFacebookTitle(title)) {
+      continue;
+    }
+
+    const price = findFacebookPriceNearElement(node);
+    const header = node.closest("h1") || node;
+    const rect = header.getBoundingClientRect();
+    const topBias = rect.top >= 0 ? Math.max(0, 600 - rect.top) / 600 : 0;
+    const score =
+      (node.matches("[data-testid='marketplace_pdp_title']") ? 5 : 0) +
+      (node.matches("h1[aria-hidden='false'] span[dir='auto']") ? 4 : 0) +
+      (node.closest("div[role='main']") ? 2 : 0) +
+      (typeof price === "number" ? 3 : 0) +
+      topBias +
+      Math.min(title.length, 120) / 120;
+
+    if (!best || score > best.score) {
+      best = { title, price, score };
+    }
+  }
+
+  if (!best) {
+    return { title: null, price: null };
+  }
+
+  return {
+    title: best.title,
+    price: typeof best.price === "number" ? best.price : null
+  };
+}
+
+function extractAmazonTitle() {
+  const selectors = ["#productTitle", "#title h1", "#titleSection h1"];
+
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    const text = el?.textContent?.trim();
+
+    if (text && !/you may also like/i.test(text)) {
+      return text;
+    }
+  }
+
+  return null;
+}
+
 function extractAskingPrice() {
+  if (isFacebookHost()) {
+    // Facebook price is extracted together with title context to avoid picking shipping/recommendation values.
+    return null;
+  }
+
+  if (isAmazonHost()) {
+    return extractAmazonAskingPrice();
+  }
+
   const selectors = getSelectorSet().price;
 
   for (const selector of selectors) {
@@ -199,6 +412,37 @@ function extractAskingPrice() {
 
   const fallback = document.body?.innerText?.match(/\$\s?([\d,]+(?:\.\d{1,2})?)/);
   return fallback ? parsePrice(fallback[0]) : null;
+}
+
+function extractAmazonAskingPrice() {
+  if (!isAmazonProductPage()) {
+    return null;
+  }
+
+  const selectors = [
+    "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+    "#corePrice_feature_div .a-price .a-offscreen",
+    "#apex_desktop .a-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-offscreen",
+    "#corePrice_feature_div .a-offscreen",
+    "#price_inside_buybox",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    "#priceblock_saleprice"
+  ];
+
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    const parsed = parsePrice(el?.textContent || "");
+
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+  }
+
+  // Intentionally no broad body-text fallback on Amazon,
+  // to avoid pulling recommendation/ad prices.
+  return null;
 }
 
 function parsePrice(text) {

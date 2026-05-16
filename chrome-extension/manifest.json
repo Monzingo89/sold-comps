@@ -16,7 +16,7 @@
     "https://offerup.com/*",
     "https://*.offerup.com/*",
     "https://www.amazon.com/*",
-    "http://localhost:3000/*",
+    "https://*.ebay.com/*",
     "https://*.onrender.com/*"
   ],
   "action": {
@@ -35,11 +35,14 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.facebook.com/marketplace/*",
+        "https://*.facebook.com/marketplace/item/*",
         "https://*.craigslist.org/*",
         "https://offerup.com/*",
         "https://*.offerup.com/*",
-        "https://www.amazon.com/*"
+        "https://www.amazon.com/dp/*",
+        "https://www.amazon.com/*/dp/*",
+        "https://www.amazon.com/gp/product/*",
+        "https://www.amazon.com/gp/aw/d/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"]
