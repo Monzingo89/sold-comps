@@ -70,15 +70,15 @@ Use `backend/.env`:
    - enable Developer Mode
    - click **Load unpacked**
    - select `chrome-extension/`
-3. In popup, set backend URL if needed (default is `http://localhost:3000`).
+3. In popup, set backend URL if needed (default is `https://sold-comps.onrender.com`).
 
 ## Deploy recommendation
 
 Recommended first deploy target: **Render**.
 
-Then point extension popup setting to:
+Current live backend:
 
-`https://your-render-app.onrender.com`
+`https://sold-comps.onrender.com`
 
 Flow:
 

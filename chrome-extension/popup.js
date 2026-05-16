@@ -1,4 +1,4 @@
-const DEFAULT_COMPS_API_BASE_URL = "http://localhost:3000";
+const DEFAULT_COMPS_API_BASE_URL = "https://sold-comps.onrender.com";
 
 const apiBaseInput = document.getElementById("apiBase");
 const saveBtn = document.getElementById("saveBtn");
