@@ -1,0 +1,94 @@
+.ebay-comps-overlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.ebay-comps-card {
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ebay-comps-header {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #93c5fd;
+}
+
+.ebay-comps-query {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.ebay-comps-subtle {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+.ebay-comps-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #fca5a5;
+  background: rgba(127, 29, 29, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.ebay-comps-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.ebay-comps-label {
+  font-size: 11px;
+  color: #93c5fd;
+  margin-bottom: 2px;
+}
+
+.ebay-comps-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ebay-comps-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.ebay-comps-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ebay-comps-list a {
+  color: #bfdbfe;
+  text-decoration: none;
+  line-height: 1.3;
+  flex: 1;
+}
+
+.ebay-comps-list a:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "eBay Sold Comps",
+  "version": "1.0.0",
+  "description": "Overlay eBay sold-comps style pricing on marketplace listings.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": [
+    "https://*.facebook.com/*",
+    "https://*.craigslist.org/*",
+    "https://offerup.com/*",
+    "https://*.offerup.com/*",
+    "https://www.amazon.com/*",
+    "https://api.ebay.com/*",
+    "https://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.facebook.com/marketplace/*",
+        "https://*.craigslist.org/*",
+        "https://offerup.com/*",
+        "https://*.offerup.com/*",
+        "https://www.amazon.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}
