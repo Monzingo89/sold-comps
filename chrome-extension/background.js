@@ -1,4 +1,4 @@
-const DEFAULT_COMPS_API_BASE_URL = "http://localhost:8787";
+const DEFAULT_COMPS_API_BASE_URL = "http://localhost:3000";
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== "SEARCH_EBAY") {
@@ -29,7 +29,7 @@ async function getCompsApiBaseUrl() {
 
 async function searchEbayListings(query, apiBaseUrl) {
   const params = new URLSearchParams({ q: query });
-  const url = `${apiBaseUrl}/api/comps?${params.toString()}`;
+  const url = `${apiBaseUrl}/api/ebay/comps?${params.toString()}`;
 
   let response;
 
@@ -41,7 +41,7 @@ async function searchEbayListings(query, apiBaseUrl) {
     });
   } catch (_error) {
     throw new Error(
-      `Could not reach comps API at ${apiBaseUrl}. Start your backend or set chrome.storage.local.compsApiBaseUrl.`
+      `Could not reach comps API at ${apiBaseUrl}. Start your backend or set the API base URL in the popup.`
     );
   }
 

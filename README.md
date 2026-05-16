@@ -1,79 +1,85 @@
-# eBay Sold Comps (MVP)
+# eBay Comps App
 
-A Chrome extension that overlays eBay comps on listing pages.
+Recommended split layout:
 
-This version uses a **backend API** for eBay calls, so secrets stay server-side.
+```
+ebay-comps-app/
+├─ backend/
+│  ├─ server.js
+│  ├─ ebay.js
+│  ├─ package.json
+│  ├─ .env
+│  ├─ .env.example
+│  └─ .gitignore
+│
+└─ chrome-extension/
+   ├─ manifest.json
+   ├─ popup.html
+   ├─ popup.js
+   ├─ content.js
+   ├─ background.js
+   └─ styles.css
+```
 
-## What it does
+## Backend (`backend/`)
 
-- Extracts listing title from:
-  - Facebook Marketplace
-  - Craigslist
-  - OfferUp
-  - Amazon product pages
-- Calls your backend `/api/comps`, which:
-  - gets/caches an eBay **Application Access Token** (`client_credentials` flow)
-  - calls eBay Browse API
-  - returns normalized comps data
-- Shows overlay with:
-  - Average eBay price
-  - Median price
-  - Recent comparable listings
-  - Resale estimate (if asking price is detectable on page)
+- `server.js` — Express API routes
+- `ebay.js` — eBay token + search utilities
+- `.env` — secrets and runtime config
+- `package.json` — dependencies and scripts
 
-## Architecture
+### Backend env
 
-`Chrome extension -> your backend -> eBay API`
+Use `backend/.env`:
 
-No eBay secrets or tokens are stored in extension code.
+- `EBAY_CLIENT_ID`
+- `EBAY_CLIENT_SECRET`
+- `EBAY_OAUTH_SCOPE=https://api.ebay.com/oauth/api_scope`
+- `PORT=3000`
 
-## Quick setup
+### Backend endpoints
 
-1. Create an eBay developer app at `developer.ebay.com`.
-2. Copy `.env.example` to `.env` and set:
-   - `EBAY_APP_ID`
-   - `EBAY_CLIENT_SECRET`
-   - `EBAY_RUNAME` (exact RuName from eBay redirect settings)
-   - optional `EBAY_USER_SCOPE` for user-login permissions
-   - optionally `EBAY_ENVIRONMENT=sandbox` for sandbox testing
-3. Start backend API:
+- `GET /health`
+- `GET /api/ebay/comps?q=ps5`
+
+`/api/comps` is also available as an alias.
+
+## Chrome extension (`chrome-extension/`)
+
+- No `.env` needed in the extension folder.
+- Extension calls backend only:
+
+`https://your-backend-url.com/api/ebay/comps?q=ps5`
+
+### Extension file roles
+
+- `manifest.json` — extension config
+- `content.js` — title/price extraction and overlay injection
+- `background.js` — API call bridge
+- `popup.html` + `popup.js` — configure backend base URL in extension storage
+- `styles.css` — overlay styling
+
+## Local run
+
+1. Start backend:
+   - `cd backend`
+   - `npm install`
    - `npm start`
-4. Load extension:
-   - Open `chrome://extensions`
-   - Enable Developer Mode
-   - Click **Load unpacked** and select this folder
-5. (Optional) set a non-local backend URL in extension storage:
-   - `chrome.storage.local.set({ compsApiBaseUrl: "https://virtualcommercecards.com" })`
-6. Visit a supported listing page and the overlay will appear.
+2. Load extension in Chrome:
+   - open `chrome://extensions`
+   - enable Developer Mode
+   - click **Load unpacked**
+   - select `chrome-extension/`
+3. In popup, set backend URL if needed (default is `http://localhost:3000`).
 
-## API endpoints
+## Deploy recommendation
 
-- `GET /health` -> service health check
-- `GET /api/comps?q=<search text>` -> normalized comps payload
-- `GET /api/ebay/connect` -> starts user OAuth (302 redirect), or `?format=json` for consent URL payload
-- `GET /api/ebay/callback` -> accepted OAuth callback handler; exchanges `code` for user tokens
-- `GET /ebay/decline` -> declined OAuth handler (returns HTML or JSON)
-- `GET /api/ebay/decline` -> JSON/API alias for declined flow
-- `GET /api/ebay/token-status` -> current in-memory user token status (masked)
+Recommended first deploy target: **Render**.
 
-### OAuth callback notes
+Then point extension popup setting to:
 
-- Configure eBay redirect URLs to:
-   - accepted: `https://virtualcommercecards.com/api/ebay/callback`
-   - declined: `https://virtualcommercecards.com/ebay/decline`
-- `EBAY_RUNAME` must match the eBay redirect entry exactly.
-- User tokens are currently cached in memory for development (not persisted to a database yet).
+`https://your-render-app.onrender.com`
 
-## Files
+Flow:
 
-- `manifest.json` — Extension config, permissions, content/background wiring
-- `content.js` — Title extraction + overlay UI injection
-- `background.js` — Extension message handling + backend API call
-- `styles.css` — Overlay styling
-- `server.js` — Backend app-token + eBay Browse proxy
-- `.env.example` — Safe env template
-
-## Notes
-
-- This MVP uses eBay Browse API listing comps.
-- For user-specific eBay features (orders, seller inventory, messages), add full user OAuth later.
+Marketplace page → extension reads title → calls backend → backend calls eBay → backend returns comps → extension shows overlay.

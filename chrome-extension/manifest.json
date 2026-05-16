@@ -10,9 +10,12 @@
     "https://offerup.com/*",
     "https://*.offerup.com/*",
     "https://www.amazon.com/*",
-    "https://api.ebay.com/*",
-    "https://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://*.onrender.com/*"
   ],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "background": {
     "service_worker": "background.js"
   },

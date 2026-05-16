@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>eBay Comps Settings</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 12px;
+        width: 320px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        color: #0f172a;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 10px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        margin-bottom: 10px;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: white;
+        font-weight: 600;
+        padding: 8px;
+        cursor: pointer;
+      }
+      .hint {
+        margin-top: 10px;
+        font-size: 11px;
+        color: #475569;
+        line-height: 1.4;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #16a34a;
+        min-height: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>eBay Comps API</h1>
+    <label for="apiBase">Backend base URL</label>
+    <input id="apiBase" type="url" placeholder="http://localhost:3000" />
+    <button id="saveBtn">Save</button>
+    <div id="status"></div>
+    <div class="hint">
+      Example: <code>https://your-render-app.onrender.com</code>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

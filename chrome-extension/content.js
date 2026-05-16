@@ -161,7 +161,7 @@ function renderComps(result, title, askingPrice) {
   const overlay = ensureOverlay();
   const estimate = typeof askingPrice === "number" ? result.averagePrice - askingPrice : null;
 
-  const listingsHtml = result.recentListings
+  const listingsHtml = (result.recentListings || [])
     .slice(0, 5)
     .map(
       (listing) => `
