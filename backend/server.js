@@ -7,8 +7,9 @@ const app = express();
 
 const port = Number(process.env.PORT || 3000);
 const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN || "*";
-const host = process.env.HOST || "0.0.0.0";
 const publicBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_BASE_URL || null;
+const hasClientId = Boolean(process.env.EBAY_CLIENT_ID || process.env.EBAY_APP_ID);
+const hasClientSecret = Boolean(process.env.EBAY_CLIENT_SECRET);
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", corsAllowOrigin);
@@ -55,8 +56,9 @@ async function handleCompsRoute(req, res) {
 app.get("/api/ebay/comps", handleCompsRoute);
 app.get("/api/comps", handleCompsRoute);
 
-app.listen(port, host, () => {
-  console.log(`[sold-comps-api] Listening on http://${host}:${port} (internal)`);
+app.listen(port, () => {
+  console.log(`[sold-comps-api] Listening on port ${port} (bind: 0.0.0.0)`);
+  console.log(`[sold-comps-api] env check: EBAY_CLIENT_ID=${hasClientId} EBAY_CLIENT_SECRET=${hasClientSecret}`);
 
   if (publicBaseUrl) {
     const normalized = String(publicBaseUrl).replace(/\/+$/, "");
